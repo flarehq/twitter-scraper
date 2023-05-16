@@ -3,6 +3,7 @@ package twitterscraper
 import (
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
@@ -43,19 +44,25 @@ const (
 	SearchUsers
 )
 
-// default http client timeout
+// DefaultClientTimeout default http client timeout
 const DefaultClientTimeout = 10 * time.Second
 
 // New creates a Scraper object
 func New() *Scraper {
 	jar, _ := cookiejar.New(nil)
-	return &Scraper{
+	scraper := &Scraper{
 		bearerToken: bearerToken,
 		client: &http.Client{
 			Jar:     jar,
 			Timeout: DefaultClientTimeout,
 		},
 	}
+
+	if err := scraper.GetGuestToken(); err != nil {
+		fmt.Printf("Error getting new guest token: %v\n", err)
+	}
+
+	return scraper
 }
 
 func (s *Scraper) setBearerToken(token string) {
@@ -86,7 +93,7 @@ func (s *Scraper) WithReplies(b bool) *Scraper {
 	return s
 }
 
-// client timeout
+// WithClientTimeout client timeout
 func (s *Scraper) WithClientTimeout(timeout time.Duration) *Scraper {
 	s.client.Timeout = timeout
 	return s
