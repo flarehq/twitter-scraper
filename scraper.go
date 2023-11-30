@@ -24,6 +24,10 @@ type Scraper struct {
 	guestCreatedAt time.Time
 	includeReplies bool
 	isLogged       bool
+	isOpenAccount  bool
+	oAuthToken     string
+	oAuthSecret    string
+	proxy          string
 	searchMode     SearchMode
 	wg             sync.WaitGroup
 }
@@ -103,6 +107,16 @@ func (s *Scraper) WithClientTimeout(timeout time.Duration) *Scraper {
 // set http proxy in the format `http://HOST:PORT`
 // set socket proxy in the format `socks5://HOST:PORT`
 func (s *Scraper) SetProxy(proxyAddr string) error {
+	if proxyAddr == "" {
+		s.client.Transport = &http.Transport{
+			TLSNextProto: make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
+			DialContext: (&net.Dialer{
+				Timeout: s.client.Timeout,
+			}).DialContext,
+		}
+		s.proxy = ""
+		return nil
+	}
 	if strings.HasPrefix(proxyAddr, "http") {
 		urlproxy, err := url.Parse(proxyAddr)
 		if err != nil {
@@ -115,6 +129,7 @@ func (s *Scraper) SetProxy(proxyAddr string) error {
 				Timeout: s.client.Timeout,
 			}).DialContext,
 		}
+		s.proxy = proxyAddr
 		return nil
 	}
 	if strings.HasPrefix(proxyAddr, "socks5") {
@@ -122,8 +137,20 @@ func (s *Scraper) SetProxy(proxyAddr string) error {
 			Timeout:   s.client.Timeout,
 			KeepAlive: s.client.Timeout,
 		}
-		socksHostPort := strings.ReplaceAll(proxyAddr, "socks5://", "")
-		dialSocksProxy, err := proxy.SOCKS5("tcp", socksHostPort, nil, baseDialer)
+		proxyURL, err := url.Parse(proxyAddr)
+		if err != nil {
+			panic(err)
+		}
+
+		// username password
+		username := proxyURL.User.Username()
+		password, _ := proxyURL.User.Password()
+
+		// ip and port
+		host := proxyURL.Hostname()
+		port := proxyURL.Port()
+
+		dialSocksProxy, err := proxy.SOCKS5("tcp", host+":"+port, &proxy.Auth{User: username, Password: password}, baseDialer)
 		if err != nil {
 			return errors.New("error creating socks5 proxy :" + err.Error())
 		}
@@ -135,6 +162,7 @@ func (s *Scraper) SetProxy(proxyAddr string) error {
 		} else {
 			return errors.New("failed type assertion to DialContext")
 		}
+		s.proxy = proxyAddr
 		return nil
 	}
 	return errors.New("only support http(s) or socks5 protocol")
